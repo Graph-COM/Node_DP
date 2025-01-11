@@ -2,6 +2,7 @@ import numpy as np
 from scipy.stats import binom
 from scipy.special import erfc
 from scipy.optimize import minimize, brentq
+from rdp_opacus import _compute_rdp
 
 
 def log_sum_exp(x):
@@ -53,7 +54,7 @@ def calculate_poisson_rdp_epsilon_integer(alpha, gamma, sigma):
     return res
 
 
-def calculate_poisson_rdp_epsilon(alpha, gamma, sigma, conv_delta=1e-6):
+def calculate_poisson_rdp_epsilon(alpha, gamma, sigma, conv_delta=1e-10):
     # compute the RDP epsilon of Poisson subsampling, with sampling rate gamma, gaussian noise sigma and any real alpha
     # conv_delta is the convergence criterion for the infinite sums
 
@@ -117,7 +118,8 @@ def calculate_poisson_rdp_epsilon(alpha, gamma, sigma, conv_delta=1e-6):
 
 
 
-def calculate_pos_neg_rdp_epsilon(alpha, gamma, sigma, K, num_neg_pairs, num_nodes, num_edges, poisson_rdp_func=calculate_poisson_rdp_epsilon, conv_delta=1e-6):
+def calculate_pos_neg_rdp_epsilon(alpha, gamma, sigma, K, num_neg_pairs, num_nodes, num_edges, poisson_rdp_func=_compute_rdp, conv_delta=1e-6):
+#def calculate_pos_neg_rdp_epsilon(alpha, gamma, sigma, K, num_neg_pairs, num_nodes, num_edges, poisson_rdp_func=calculate_poisson_rdp_epsilon, conv_delta=1e-6):
     # compute the (log) RDP epsilon of positive+negative subsampling, with positive sampling rate (gamma), gaussian noise (sigma),
     # a real (alpha), maximal node degree (K), number of negative samples per positive sample (num_neg_pairs), node size (num_nodes),
     # edge size (num_edges).
@@ -130,7 +132,8 @@ def calculate_pos_neg_rdp_epsilon(alpha, gamma, sigma, K, num_neg_pairs, num_nod
     for m in range(num_edges):
         proba = binom.pmf(m, num_edges, gamma)
         Gamma_m = 1-(1-gamma)**K*(1-m*num_neg_pairs/num_nodes) # effective gamma
-        log_epsilon_change = np.log(proba) + poisson_rdp_func(alpha, Gamma_m, sigma) # log(binom(num_edges, m)) + poisson_rdp(Gamma_m)
+        #log_epsilon_change = np.log(proba) + poisson_rdp_func(alpha, Gamma_m, sigma) # log(binom(num_edges, m)) + poisson_rdp(Gamma_m)
+        log_epsilon_change = np.log(proba) + poisson_rdp_func(Gamma_m, sigma, alpha) * (alpha - 1)
         terms_to_sum.append(log_epsilon_change)
         res_1 = log_sum_exp(np.array(terms_to_sum)) # log(sum_{k=1}^m binom(num_edges, k) * exp(poisson_rdp(Gamma_k)))
         change = np.abs((res_1 - res_0) / res_0) # used to determine convergence

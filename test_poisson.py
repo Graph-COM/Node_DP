@@ -1,6 +1,7 @@
 import numpy as np
-from poisson_utils import calculate_poisson_rdp_epsilon, calculate_pos_neg_rdp_epsilon
+from poisson_utils import calculate_poisson_rdp_epsilon, calculate_pos_neg_rdp_epsilon, calculate_poisson_rdp_epsilon_integer
 import matplotlib.pyplot as plt
+from rdp_opacus import _compute_rdp
 
 
 # setting
@@ -10,17 +11,19 @@ batch_size = 64 # batch size
 num_neg_pairs = 4 # num of negative samples per positive sample
 K = 5 # maximal node degree
 gamma = batch_size / E # positive Poisson sampling rate
-sigma = 0.45 # Gaussian noise level
-num_runs = int(1 / gamma) / 2 # num_of runs to go, only use partial data
+sigma = 0.43 # Gaussian noise level
+num_runs = int(1 / gamma) / 10 # num_of runs to go, only use partial data
 delta = 1 / E # privacy budget of ADP delta
 
 eps_pos_neg = [] # RDP eps of positive+negative sampling
 eps_poisson = [] # RDP eps of poisson subsampling
 eps = [] # RDP eps of standard Gaussian mechanism
-alphas = np.linspace(2, 50, 200) # range of alpha
+#alphas = np.linspace(2, 50, 200) # range of alpha
+alphas = np.arange(2, 50)
 for alpha in alphas:
     eps.append(alpha/2/sigma**2)
-    eps_poisson.append(calculate_poisson_rdp_epsilon(alpha, gamma, sigma)/(alpha-1)) # note that we need to manually divide by alpha-1
+    #eps_poisson.append(calculate_poisson_rdp_epsilon_integer(alpha, gamma, sigma)/(alpha-1)) # note that we need to manually divide by alpha-1
+    eps_poisson.append(_compute_rdp(gamma, sigma, alpha))
     eps_pos_neg.append(calculate_pos_neg_rdp_epsilon(alpha, gamma, sigma, K, num_neg_pairs, n, E))
 
 
