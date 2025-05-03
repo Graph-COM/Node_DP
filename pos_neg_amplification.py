@@ -14,13 +14,21 @@ num_neg_pairs = 4 # num of negative samples per positive sample
 K = 5 # maximal node degree
 #num_neg_pairs, K = 0, 1 # sanity check, this should give the same result as poisson
 gamma = batch_size / E # positive Poisson sampling rate
-sigma = 0.43 # Gaussian noise level
+sigma = 0.42 # Gaussian noise level
 num_runs = int( 1 / gamma / 10) # num_of runs to go, only use partial data
 delta = 1 / E # privacy budget of ADP delta
 
 
+# accountant for standard poisson
 poisson_rdp_account = RDPAccountant()
-pos_neg_rdp_account = PosNegRDPAccountant(max_node_degree=K, num_neg_pairs=num_neg_pairs, num_nodes=n, num_edges=E)
+
+# accountant for pos-neg-sampling with constant sensitivity (i.e., use adaptive clipping)
+#pos_neg_rdp_account = PosNegRDPAccountant(max_node_degree=K, num_neg_pairs=num_neg_pairs, num_nodes=n, num_edges=E,
+                                          #constant_sensitivity=True)
+
+# accountant for pos-neg-sampling with linear sensitivity (i.e., use tradition per-term clipping)
+pos_neg_rdp_account = PosNegRDPAccountant(max_node_degree=K, num_neg_pairs=num_neg_pairs, num_nodes=n, num_edges=E,
+                                          constant_sensitivity=False)
 
 # execute DP algorithms for num_runs steps
 for step in range(num_runs):

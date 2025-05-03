@@ -18,16 +18,15 @@ from .accountant import IAccountant
 from .analysis import rdp as privacy_analysis
 
 
-class PosNegRDPAccountant(IAccountant):
+class PosNegLowerRDPAccountant(IAccountant):
     DEFAULT_ALPHAS = [1 + x / 10.0 for x in range(1, 100)] + list(range(12, 64))
 
-    def __init__(self, max_node_degree, num_neg_pairs, num_nodes, num_edges, constant_sensitivity=True):
+    def __init__(self, max_node_degree, num_neg_pairs, num_nodes, num_edges):
         super().__init__()
         self.max_node_degree = max_node_degree
         self.num_neg_pairs = num_neg_pairs
         self.num_nodes = num_nodes
         self.num_edges = num_edges
-        self.constant_sensitivity = constant_sensitivity
 
     def step(self, *, noise_multiplier: float, sample_rate: float):
         if len(self.history) >= 1:
@@ -58,7 +57,7 @@ class PosNegRDPAccountant(IAccountant):
             alphas = self.DEFAULT_ALPHAS
         rdp = sum(
             [
-                privacy_analysis.compute_pos_neg_rdp(
+                privacy_analysis.compute_pos_neg_lower(
                     q=sample_rate,
                     noise_multiplier=noise_multiplier,
                     steps=num_steps,
@@ -66,8 +65,7 @@ class PosNegRDPAccountant(IAccountant):
                     max_node_degree=self.max_node_degree,
                     num_neg_pairs=self.num_neg_pairs,
                     num_nodes=self.num_nodes,
-                    num_edges=self.num_edges,
-                    constant_sensitivity=self.constant_sensitivity,
+                    num_edges=self.num_edges
                 )
                 for (noise_multiplier, sample_rate, num_steps) in self.history
             ]

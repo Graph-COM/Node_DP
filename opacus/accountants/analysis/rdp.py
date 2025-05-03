@@ -47,11 +47,13 @@ Example:
 import math
 import warnings
 from typing import List, Tuple, Union
-
+from tqdm import tqdm
 import numpy as np
 from scipy import special
 from scipy.stats import binom
 
+from group_amplification.privacy_analysis.base_mechanisms import GaussianMechanism
+from group_amplification.privacy_analysis.subsampling.rdp.poisson import _rdp_tight_pos_neg_quadrature_gaussian
 
 ########################
 # LOG-SPACE ARITHMETIC #
@@ -298,7 +300,7 @@ def log_sum_exp(x):
 
 
 def compute_pos_neg_rdp(q: float, noise_multiplier: float, steps: int, orders: Union[List[float], float], max_node_degree: int,
-                        num_neg_pairs: int, num_nodes: int, num_edges: int, conv_criterion=1e-6):
+                        num_neg_pairs: int, num_nodes: int, num_edges: int, conv_criterion=1e-4, constant_sensitivity=True):
         # def calculate_pos_neg_rdp_epsilon(alpha, gamma, sigma, K, num_neg_pairs, num_nodes, num_edges, poisson_rdp_func=calculate_poisson_rdp_epsilon, conv_delta=1e-6):
         # compute the (log) RDP epsilon of positive+negative subsampling, with positive sampling rate (gamma), gaussian noise (sigma),
         # a real (alpha), maximal node degree (K), number of negative samples per positive sample (num_neg_pairs), node size (num_nodes),
@@ -309,14 +311,31 @@ def compute_pos_neg_rdp(q: float, noise_multiplier: float, steps: int, orders: U
         # the summation is doing in log scale, so m-th term is log(binom(num_edges, m)) + poisson_rdp(Gamma_m)
         eps_all_orders = []
         orders = [orders] if isinstance(orders, float) else orders
-        for alpha in orders:
+        for alpha in tqdm(orders, desc='Computing RDP bound at different orders alpha'):
             res_0 = 0
             terms_to_sum = []
-            for m in range(num_edges):
+            mean, std = num_edges * q, np.sqrt(num_edges * q * (1 - q))
+            m_start = int(max(0, mean - 6 * std))
+            m_end = int(mean + 6 * std)
+            temp = []
+            #for m in range(num_edges):
+            for m in tqdm(range(m_start, m_end), desc="At alpha=%.2f, iter over all batch size" % alpha, leave=False):
                 proba = binom.pmf(m, num_edges, q)
-                Gamma_m = 1 - (1 - q) ** max_node_degree * (1 - m * num_neg_pairs / num_nodes)  # effective gamma
-                # log_epsilon_change = np.log(proba) + poisson_rdp_func(alpha, Gamma_m, sigma) # log(binom(num_edges, m)) + poisson_rdp(Gamma_m)
-                log_epsilon_change = np.log(proba) + _compute_rdp(Gamma_m, noise_multiplier, alpha) * (alpha - 1)
+                if constant_sensitivity:
+                    # when the sensitivity is constant, the RDP can be reduced to a non-group privacy problem with an effective sampling rate
+                    Gamma_m = 1 - (1 - q) ** max_node_degree * (1 - m * num_neg_pairs / num_nodes)  # effective gamma
+                    log_epsilon_change = np.log(proba) + _compute_rdp(Gamma_m, noise_multiplier, alpha) * (alpha - 1)
+                    # log_epsilon_change = np.log(proba) + poisson_rdp_func(alpha, Gamma_m, sigma) # log(binom(num_edges, m)) + poisson_rdp(Gamma_m)
+                else:
+                    # when sensitivity varies, directly use numerical integral for the group privacy RDP
+                    rdp=_rdp_tight_pos_neg_quadrature_gaussian(alpha, GaussianMechanism(noise_multiplier), q, 0,
+                                                           max_node_degree, 0, m * num_neg_pairs / num_nodes,
+                                                           {'dps':10}, constant_sensitivity=False)
+                    #B=_rdp_tight_pos_neg_quadrature_gaussian(alpha, GaussianMechanism(noise_multiplier), q,
+                                                           #max_node_degree, 0, m * num_neg_pairs / num_nodes, 0,
+                                                           #{'dps':50}, constant_sensitivity=False)
+                    log_epsilon_change = np.log(proba) + rdp * (alpha - 1)
+                    temp.append(rdp)
                 terms_to_sum.append(log_epsilon_change)
                 res_1 = log_sum_exp(
                     np.array(terms_to_sum))  # log(sum_{k=1}^m binom(num_edges, k) * exp(poisson_rdp(Gamma_k)))
@@ -327,6 +346,28 @@ def compute_pos_neg_rdp(q: float, noise_multiplier: float, steps: int, orders: U
             epsilon = res_0 / (alpha - 1) * steps  # final eps
             eps_all_orders.append(epsilon)
         return np.array(eps_all_orders)
+
+
+
+
+def compute_pos_neg_lower(q: float, noise_multiplier: float, steps: int, orders: Union[List[float], float], max_node_degree: int,
+                        num_neg_pairs: int, num_nodes: int, num_edges: int, conv_criterion=1e-6):
+    eps_all_orders = []
+    orders = [orders] if isinstance(orders, float) else orders
+    for alpha in orders:
+        gamma_b = 0
+        gamma_effective = 0
+        for b in range(1, num_edges - max_node_degree + 1):
+            gamma_b = 1 - (1 - gamma_b) * (num_edges - max_node_degree - b + 1) / (num_edges - b + 1) * (
+                        num_nodes - b * num_neg_pairs) / (num_nodes - b * num_neg_pairs + 1)
+            proba_b = binom.pmf(b, num_edges, q)
+            gamma_effective += proba_b * gamma_b
+            if b >= 2 * num_edges * q and (proba_b * gamma_b / gamma_effective) <= conv_criterion:
+                break
+        res = _compute_rdp(gamma_effective, noise_multiplier, alpha) * steps
+        eps_all_orders.append(res)
+    return np.array(eps_all_orders)
+
 
 def get_privacy_spent(
     *, orders: Union[List[float], float], rdp: Union[List[float], float], delta: float
