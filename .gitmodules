@@ -1,0 +1,3 @@
+[submodule "node_dp_accounting/opacus"]
+	path = node_dp_accounting/opacus
+	url = https://github.com/pytorch/opacus.git
